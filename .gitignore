@@ -12,5 +12,3 @@ artifacts/
 *.pt
 *.torchscript
 .env
-node_modules/
-dist/

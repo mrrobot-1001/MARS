@@ -7,13 +7,13 @@ import { checkBackendHealth } from './utils/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'evaluator' | 'security' | 'performance'>('dashboard');
-  const [backendStatus, setBackendStatus] = useState<{ online: boolean; engine_version?: string }>({ online: false });
+  const [backendStatus, setBackendStatus] = useState<{ online: boolean; track_version?: string }>({ online: false });
 
   useEffect(() => {
     // Poll backend health every 5 seconds
     const checkStatus = () => {
       checkBackendHealth().then(status => {
-        setBackendStatus({ online: status.online, engine_version: status.engine_version });
+        setBackendStatus({ online: status.online, track_version: status.track_version });
       });
     };
     checkStatus();
@@ -81,7 +81,7 @@ export default function App() {
           <span className={`status-indicator ${backendStatus.online ? 'online' : 'offline'}`}></span>
           <span>
             {backendStatus.online 
-              ? `API ONLINE (${backendStatus.engine_version || 'v0.1'})` 
+              ? `API ONLINE (${backendStatus.track_version || 'v0.1'})` 
               : 'OFFLINE (SIM MODE)'}
           </span>
         </div>

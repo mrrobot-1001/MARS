@@ -10,18 +10,42 @@ AssetType = Literal["track", "bridge", "tunnel", "platform", "yard"]
 RiskSeverity = Literal["normal", "caution", "high_risk"]
 
 
-class EngineEvent(BaseModel):
-    engine_id: str
-    timestamp: datetime
-    engine_rpm: int
-    lub_oil_pressure: float
-    fuel_pressure: float
-    coolant_pressure: float
-    lub_oil_temp: float
-    coolant_temp: float
+class SegmentMetadata(BaseModel):
+    segment_id: str
+    line_id: str
+    region: str
+    asset_type: AssetType = "track"
+    age_years: float = Field(ge=0, le=150)
+    maintenance_score: float = Field(ge=0, le=1)
+    curvature_degree: float = Field(ge=0, le=20)
+    max_permitted_speed: float = Field(gt=0, le=250)
 
-class EngineRiskRequest(BaseModel):
-    event: EngineEvent
+
+class SensorEvent(BaseModel):
+    timestamp: datetime
+    segment_id: str
+    train_id: Optional[str] = None
+    speed: float = Field(ge=0, le=250)
+    acceleration: float = Field(ge=-10, le=10)
+    vibration_vertical: float = Field(ge=0, le=10)
+    vibration_lateral: float = Field(ge=0, le=10)
+    track_temperature: float = Field(ge=-20, le=90)
+
+
+class WeatherEvent(BaseModel):
+    timestamp: datetime
+    segment_id: Optional[str] = None
+    region: str
+    rainfall_mm: float = Field(ge=0, le=500)
+    visibility_m: float = Field(ge=0, le=50000)
+    temperature_c: float = Field(ge=-30, le=65)
+    wind_speed_kmph: float = Field(ge=0, le=250)
+    hazard_flags: list[str] = Field(default_factory=list)
+
+    @field_validator("hazard_flags")
+    @classmethod
+    def normalize_flags(cls, flags: list[str]) -> list[str]:
+        return sorted({flag.strip().lower() for flag in flags if flag.strip()})
 
 
 class BoundingBox(BaseModel):
@@ -60,6 +84,17 @@ class VideoEvent(BaseModel):
     frame_url: Optional[str] = None
     zone_polygon: list[tuple[float, float]] = Field(default_factory=list)
     annotations: list[VideoAnnotation] = Field(default_factory=list)
+
+
+class TrackRiskRequest(BaseModel):
+    segment: SegmentMetadata
+    events: list[SensorEvent] = Field(min_length=1)
+
+
+class WeatherRiskRequest(BaseModel):
+    segment: SegmentMetadata
+    sensor_events: list[SensorEvent] = Field(min_length=1)
+    weather: WeatherEvent
 
 
 class SecurityAnomalyRequest(BaseModel):

@@ -1,2 +1,0 @@
-{'accuracy': 0.8583889173935352, 'precision_macro': 0.8696910874400946, 'recall_macro': 0.8869781397266663, 'f1_macro': 0.8729599462141776}
-wrote artifacts/weather-risk/mars-weather-risk.joblib
