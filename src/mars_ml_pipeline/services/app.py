@@ -1,33 +1,27 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import time
 from datetime import datetime, timezone
-from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
-from starlette.responses import Response
+from prometheus_client import Counter, Histogram, generate_latest
+from prometheus_client.exposition import CONTENT_TYPE_LATEST
 
 from mars_ml_pipeline.config import load_settings, load_thresholds
 from mars_ml_pipeline.event_bus import HttpEventPublisher, NoopPublisher
-from mars_ml_pipeline.features import (
-    TRACK_FEATURE_ORDER,
-    WEATHER_FEATURE_ORDER,
-    build_track_features,
-    build_weather_features,
-)
-from mars_ml_pipeline.models.rule_based import RuleBasedTrackRiskModel, RuleBasedWeatherRiskModel
-from mars_ml_pipeline.models.sklearn_adapter import SklearnRiskModel
+from mars_ml_pipeline.features import ENGINE_FEATURE_ORDER, build_engine_features
 from mars_ml_pipeline.recommendations import classify_score
+from mars_ml_pipeline.models.sklearn_adapter import SklearnRiskModel
 from mars_ml_pipeline.schemas import (
     ExplanationItem,
     PublishedEvent,
     RiskPrediction,
     SecurityAnomalyRequest,
     SecurityPrediction,
-    TrackRiskRequest,
-    WeatherRiskRequest,
+    EngineRiskRequest,
 )
 from mars_ml_pipeline.services.security import AnnotationSecurityDetector
 
@@ -48,16 +42,12 @@ def create_app() -> FastAPI:
     settings = load_settings()
     thresholds = load_thresholds(settings.thresholds_path)
 
-    track_model = (
-        SklearnRiskModel(settings.track_model_path, TRACK_FEATURE_ORDER, "track-risk-sklearn")
-        if settings.track_model_path
-        else RuleBasedTrackRiskModel()
+    engine_model = SklearnRiskModel(
+        settings.track_model_path.replace("track-risk", "engine-risk").replace("mars-track-risk", "mars-engine-risk") if settings.track_model_path else "artifacts/engine-risk/mars-engine-risk.joblib",
+        ENGINE_FEATURE_ORDER,
+        "engine-risk-sklearn"
     )
-    weather_model = (
-        SklearnRiskModel(settings.weather_model_path, WEATHER_FEATURE_ORDER, "weather-risk-sklearn")
-        if settings.weather_model_path
-        else RuleBasedWeatherRiskModel()
-    )
+
     security_detector = AnnotationSecurityDetector()
     publisher = (
         HttpEventPublisher(settings.event_bus_url)
@@ -66,9 +56,9 @@ def create_app() -> FastAPI:
     )
 
     app = FastAPI(
-        title="MARS ML Inference",
+        title="MARS Engine Health Inference",
         version="0.1.0",
-        description="Risk and anomaly model endpoints for MARS agents.",
+        description="Predictive maintenance endpoints for train engines.",
     )
 
     app.add_middleware(
@@ -83,8 +73,7 @@ def create_app() -> FastAPI:
     def health() -> dict[str, object]:
         return {
             "status": "ok",
-            "track_model_version": track_model.model_version,
-            "weather_model_version": weather_model.model_version,
+            "engine_model_version": engine_model.model_version,
             "security_model_version": security_detector.model_version,
         }
 
@@ -92,62 +81,31 @@ def create_app() -> FastAPI:
     def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
-    @app.post("/track-risk/predict", response_model=RiskPrediction)
-    def predict_track_risk(request: TrackRiskRequest) -> RiskPrediction:
+    @app.post("/engine-risk/predict", response_model=RiskPrediction)
+    def predict_engine_risk(request: EngineRiskRequest) -> RiskPrediction:
         started = time.perf_counter()
         try:
-            features = build_track_features(
-                [event.model_dump() for event in request.events],
-                request.segment.model_dump(),
-            )
-            score = track_model.predict_score(features)
+            features = build_engine_features(request.event.model_dump())
+            score = engine_model.predict_score(features)
+            # Use track thresholds as generic thresholds for now
             decision = classify_score(score, thresholds.track.caution, thresholds.track.high_risk)
             response = RiskPrediction(
-                segment_id=request.segment.segment_id,
+                segment_id=request.event.engine_id,
                 risk_score=score,
                 risk_class=decision.risk_class,
                 severity=decision.severity,
                 recommended_action=decision.recommended_action,
-                explanation=_track_explanation(features),
-                model_version=track_model.model_version,
+                explanation=_engine_explanation(features),
+                model_version=engine_model.model_version,
             )
-            _publish("track_risk.predicted", response.model_dump(mode="json"))
-            REQUEST_COUNT.labels("/track-risk/predict", "success").inc()
+            _publish("engine_risk.predicted", response.model_dump(mode="json"))
+            REQUEST_COUNT.labels("/engine-risk/predict", "success").inc()
             return response
         except Exception as exc:
-            REQUEST_COUNT.labels("/track-risk/predict", "error").inc()
+            REQUEST_COUNT.labels("/engine-risk/predict", "error").inc()
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         finally:
-            REQUEST_LATENCY.labels("/track-risk/predict").observe(time.perf_counter() - started)
-
-    @app.post("/weather-risk/predict", response_model=RiskPrediction)
-    def predict_weather_risk(request: WeatherRiskRequest) -> RiskPrediction:
-        started = time.perf_counter()
-        try:
-            track_features = build_track_features(
-                [event.model_dump() for event in request.sensor_events],
-                request.segment.model_dump(),
-            )
-            features = build_weather_features(track_features, request.weather.model_dump())
-            score = weather_model.predict_score(features)
-            decision = classify_score(score, thresholds.weather.caution, thresholds.weather.high_risk)
-            response = RiskPrediction(
-                segment_id=request.segment.segment_id,
-                risk_score=score,
-                risk_class=decision.risk_class,
-                severity=decision.severity,
-                recommended_action=decision.recommended_action,
-                explanation=_weather_explanation(features),
-                model_version=weather_model.model_version,
-            )
-            _publish("weather_risk.predicted", response.model_dump(mode="json"))
-            REQUEST_COUNT.labels("/weather-risk/predict", "success").inc()
-            return response
-        except Exception as exc:
-            REQUEST_COUNT.labels("/weather-risk/predict", "error").inc()
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        finally:
-            REQUEST_LATENCY.labels("/weather-risk/predict").observe(time.perf_counter() - started)
+            REQUEST_LATENCY.labels("/engine-risk/predict").observe(time.perf_counter() - started)
 
     @app.post("/security-anomaly/predict", response_model=SecurityPrediction)
     def predict_security_anomaly(request: SecurityAnomalyRequest) -> SecurityPrediction:
@@ -179,55 +137,24 @@ def create_app() -> FastAPI:
     return app
 
 
-def _track_explanation(features: dict[str, float]) -> list[ExplanationItem]:
+def _engine_explanation(features: dict[str, float]) -> list[ExplanationItem]:
     items: list[ExplanationItem] = []
-    if features["speed_max"] > features["max_permitted_speed"]:
+    if features.get("Coolant temp", 0) > 90:
         items.append(
             ExplanationItem(
-                feature="speed_max",
-                value=round(features["speed_max"], 2),
-                reason="speed exceeds segment limit",
+                feature="Coolant temp",
+                value=round(features["Coolant temp"], 2),
+                reason="Coolant temperature is dangerously high",
             )
         )
-    if features["vibration_vertical_mean"] >= 0.7:
+    if features.get("Lub oil pressure", 10) < 2.0:
         items.append(
             ExplanationItem(
-                feature="vibration_vertical_mean",
-                value=round(features["vibration_vertical_mean"], 3),
-                reason="elevated vertical vibration",
+                feature="Lub oil pressure",
+                value=round(features["Lub oil pressure"], 3),
+                reason="Lubrication oil pressure is too low",
             )
         )
-    if features["maintenance_score"] <= 0.45:
-        items.append(
-            ExplanationItem(
-                feature="maintenance_score",
-                value=round(features["maintenance_score"], 3),
-                reason="low maintenance health score",
-            )
-        )
-    return items
-
-
-def _weather_explanation(features: dict[str, float]) -> list[ExplanationItem]:
-    items = _track_explanation(features)
-    if features["rainfall_mm"] >= 40:
-        items.append(
-            ExplanationItem(
-                feature="rainfall_mm",
-                value=round(features["rainfall_mm"], 2),
-                reason="heavy rainfall increases track risk",
-            )
-        )
-    if features["visibility_m"] <= 800:
-        items.append(
-            ExplanationItem(
-                feature="visibility_m",
-                value=round(features["visibility_m"], 2),
-                reason="low visibility affects operations",
-            )
-        )
-    if features["flood_flag"]:
-        items.append(ExplanationItem(feature="flood_flag", value=1, reason="flood hazard active"))
     return items
 
 

@@ -26,12 +26,8 @@ def main() -> None:
 
     sensor = pd.read_csv(args.sensor_input)
     weather = pd.read_csv(args.weather_input)
-    frame = sensor.merge(
-        weather.drop(columns=["timestamp"]),
-        on="segment_id",
-        how="inner",
-        suffixes=("", "_weather"),
-    )
+    weather_features = weather.drop(columns=["timestamp", "segment_id", "region"])
+    frame = pd.concat([sensor, weather_features], axis=1)
     frame["flood_flag"] = frame["hazard_flags"].fillna("").str.contains("flood").astype(int)
     frame["fog_flag"] = frame["hazard_flags"].fillna("").str.contains("fog").astype(int)
     frame["heat_flag"] = frame["hazard_flags"].fillna("").str.contains("heat").astype(int)
