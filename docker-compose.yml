@@ -1,0 +1,11 @@
+services:
+  mars-ml-inference:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      MARS_THRESHOLDS_PATH: /app/configs/risk_thresholds.yaml
+      MARS_ENABLE_EVENT_PUBLISH: "false"
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+      - ./configs:/app/configs:ro

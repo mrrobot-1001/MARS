@@ -1,0 +1,8 @@
+service:
+  name: mars-ml-inference
+  log_level: INFO
+  default_region: unknown
+
+event_bus:
+  publish_enabled: false
+  timeout_seconds: 2.0

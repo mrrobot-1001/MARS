@@ -1,0 +1,15 @@
+track:
+  caution: 0.35
+  high_risk: 0.68
+weather:
+  caution: 0.30
+  high_risk: 0.62
+security:
+  caution: 0.40
+  high_risk: 0.70
+
+actions:
+  normal: normal
+  caution: caution
+  high_risk: restrict_speed
+  critical: block
