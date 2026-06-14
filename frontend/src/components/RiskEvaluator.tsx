@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
-import { predictTrackRisk, predictWeatherRisk, PredictionResponse } from '../utils/api';
+import {
+  getRegionProfile,
+  predictTrackRisk,
+  predictWeatherRisk,
+  PredictionResponse,
+  REGION_PROFILES,
+} from '../utils/api';
 
 export default function RiskEvaluator() {
   const [activeTab, setActiveTab] = useState<'track' | 'weather'>('track');
+  const [regionCode, setRegionCode] = useState('CR');
+  const regionProfile = getRegionProfile(regionCode);
+  const [division, setDivision] = useState(regionProfile.divisions[0]);
   
   // Track parameters
   const [speed, setSpeed] = useState(85);
@@ -27,6 +36,14 @@ export default function RiskEvaluator() {
   const [loading, setLoading] = useState(false);
   const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
 
+  useEffect(() => {
+    setDivision(regionProfile.divisions[0]);
+    setMaxPermittedSpeed(prev => Math.max(45, Math.min(160, prev + regionProfile.max_speed_bias)));
+    setWeatherTemp(regionProfile.temperature_baseline_c);
+    setRainfall(Math.round(regionProfile.rainfall_baseline_mm));
+    setVisibility(Math.round(regionProfile.visibility_baseline_m));
+  }, [regionCode]);
+
   // Function to run the evaluation
   const runEvaluation = async () => {
     setLoading(true);
@@ -34,8 +51,9 @@ export default function RiskEvaluator() {
     // Prep segment metadata
     const segment = {
       segment_id: 'SEG-EVAL',
-      line_id: 'LINE-A',
-      region: 'central',
+      line_id: `${regionCode}-${division.toUpperCase().replace(/\s+/g, '-')}`,
+      region: regionCode,
+      division,
       asset_type: 'track' as const,
       age_years: segmentAge,
       maintenance_score: maintenanceScore,
@@ -67,7 +85,7 @@ export default function RiskEvaluator() {
 
         const weather = {
           timestamp: new Date().toISOString(),
-          region: 'central',
+          region: regionCode,
           rainfall_mm: rainfall,
           visibility_m: visibility,
           temperature_c: weatherTemp,
@@ -89,7 +107,7 @@ export default function RiskEvaluator() {
   useEffect(() => {
     runEvaluation();
   }, [
-    activeTab, speed, acceleration, vibrationVertical, vibrationLateral,
+    activeTab, regionCode, division, speed, acceleration, vibrationVertical, vibrationLateral,
     trackTemp, segmentAge, maintenanceScore, curvature, maxPermittedSpeed,
     rainfall, visibility, weatherTemp, windSpeed, floodFlag, fogFlag, heatFlag
   ]);
@@ -122,6 +140,34 @@ export default function RiskEvaluator() {
         {/* Input sliders */}
         <div className="slider-group">
           <h4 className="explanations-header">Track Telemetry & Metadata</h4>
+
+          <div className="select-grid">
+            <label className="select-item">
+              <span className="slider-name">Railway Zone</span>
+              <select value={regionCode} onChange={e => setRegionCode(e.target.value)}>
+                {REGION_PROFILES.map(profile => (
+                  <option key={profile.code} value={profile.code}>
+                    {profile.code} - {profile.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="select-item">
+              <span className="slider-name">Division</span>
+              <select value={division} onChange={e => setDivision(e.target.value)}>
+                {regionProfile.divisions.map(item => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="region-profile-panel">
+            <span className="region-profile-title">{regionProfile.headquarters} HQ</span>
+            <span>{regionProfile.operating_condition}</span>
+            <span>Hazards: {regionProfile.climate_hazards.join(', ')}</span>
+          </div>
           
           <div className="slider-item">
             <div className="slider-label-row">
@@ -273,6 +319,9 @@ export default function RiskEvaluator() {
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}>
                   Active model: {prediction.model_version}
                 </span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-brand-cyan)', fontFamily: 'var(--font-mono)' }}>
+                  {prediction.region || regionCode} / {prediction.division || division}
+                </span>
                 <div style={{ marginTop: '0.5rem' }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', display: 'block' }}>Recommended Action:</span>
                   <span className="action-val">{prediction.recommended_action}</span>
@@ -285,14 +334,17 @@ export default function RiskEvaluator() {
               <h4 className="explanations-header">Risk Contribution Breakdown</h4>
               <div className="explanations-list">
                 {prediction.explanation.map((item, idx) => {
-                  const percent = Math.min(100, Math.max(0, (item.score / 0.35) * 100)); // normalized scale
+                  const score = item.score ?? 0.08;
+                  const label = item.factor || item.feature || 'Risk factor';
+                  const description = item.description || item.reason || String(item.value ?? '');
+                  const percent = Math.min(100, Math.max(8, (score / 0.35) * 100));
                   return (
                     <div key={idx} className="explanation-item">
                       <div className="explanation-row">
-                        <span className="explanation-factor">{item.factor}</span>
-                        <span className="explanation-score">+{Math.round(item.score * 100)}%</span>
+                        <span className="explanation-factor">{label}</span>
+                        <span className="explanation-score">{item.score !== undefined ? `+${Math.round(score * 100)}%` : String(item.value ?? '')}</span>
                       </div>
-                      <span className="explanation-desc">{item.description}</span>
+                      <span className="explanation-desc">{description}</span>
                       <div className="explanation-bar-bg">
                         <div className="explanation-bar-fill" style={{ width: `${percent}%` }}></div>
                       </div>

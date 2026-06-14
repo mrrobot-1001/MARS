@@ -4,6 +4,8 @@ from collections.abc import Iterable, Mapping
 from statistics import mean, pstdev
 from typing import Any
 
+from mars_ml_pipeline.regions import get_region_profile
+
 
 TRACK_FEATURE_ORDER = [
     "speed_mean",
@@ -43,6 +45,7 @@ def build_track_features(events: Iterable[Mapping[str, Any]], segment: Mapping[s
     vertical = _values(event_list, "vibration_vertical")
     lateral = _values(event_list, "vibration_lateral")
     temperatures = _values(event_list, "track_temperature")
+    profile = get_region_profile(str(segment.get("region", "")))
 
     return {
         "speed_mean": mean(speeds),
@@ -58,6 +61,10 @@ def build_track_features(events: Iterable[Mapping[str, Any]], segment: Mapping[s
         "maintenance_score": float(segment["maintenance_score"]),
         "curvature_degree": float(segment["curvature_degree"]),
         "max_permitted_speed": float(segment["max_permitted_speed"]),
+        "regional_speed_factor": profile.speed_factor,
+        "regional_vibration_factor": profile.vibration_factor,
+        "regional_weather_factor": profile.weather_factor,
+        "regional_maintenance_factor": profile.maintenance_factor,
     }
 
 
@@ -67,6 +74,7 @@ def build_weather_features(
 ) -> dict[str, float]:
     features = dict(track_features)
     hazard_flags = set(weather_event.get("hazard_flags") or [])
+    profile = get_region_profile(str(weather_event.get("region") or ""))
     features.update(
         {
             "rainfall_mm": float(weather_event["rainfall_mm"]),
@@ -76,6 +84,7 @@ def build_weather_features(
             "flood_flag": float("flood" in hazard_flags),
             "fog_flag": float("fog" in hazard_flags),
             "heat_flag": float("heat" in hazard_flags),
+            "regional_weather_factor": profile.weather_factor,
         }
     )
     return features

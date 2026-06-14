@@ -14,6 +14,7 @@ class SegmentMetadata(BaseModel):
     segment_id: str
     line_id: str
     region: str
+    division: Optional[str] = None
     asset_type: AssetType = "track"
     age_years: float = Field(ge=0, le=150)
     maintenance_score: float = Field(ge=0, le=1)
@@ -109,6 +110,9 @@ class ExplanationItem(BaseModel):
 
 class RiskPrediction(BaseModel):
     segment_id: str
+    region: Optional[str] = None
+    division: Optional[str] = None
+    regional_profile: Optional[dict[str, object]] = None
     risk_score: float = Field(ge=0, le=1)
     risk_class: int = Field(ge=0, le=2)
     severity: RiskSeverity

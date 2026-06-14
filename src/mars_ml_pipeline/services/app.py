@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +20,7 @@ from mars_ml_pipeline.features import (
 )
 from mars_ml_pipeline.models.rule_based import RuleBasedTrackRiskModel, RuleBasedWeatherRiskModel
 from mars_ml_pipeline.models.sklearn_adapter import SklearnRiskModel
+from mars_ml_pipeline.regions import get_region_profile, list_region_profiles
 from mars_ml_pipeline.recommendations import classify_score
 from mars_ml_pipeline.schemas import (
     ExplanationItem,
@@ -92,10 +94,16 @@ def create_app() -> FastAPI:
     def metrics() -> Response:
         return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
+    @app.get("/regions")
+    def regions() -> dict[str, list[dict[str, object]]]:
+        return {"regions": list_region_profiles()}
+
     @app.post("/track-risk/predict", response_model=RiskPrediction)
     def predict_track_risk(request: TrackRiskRequest) -> RiskPrediction:
         started = time.perf_counter()
         try:
+            region_profile = get_region_profile(request.segment.region)
+            division = request.segment.division or region_profile.divisions[0]
             features = build_track_features(
                 [event.model_dump() for event in request.events],
                 request.segment.model_dump(),
@@ -104,11 +112,14 @@ def create_app() -> FastAPI:
             decision = classify_score(score, thresholds.track.caution, thresholds.track.high_risk)
             response = RiskPrediction(
                 segment_id=request.segment.segment_id,
+                region=region_profile.code,
+                division=division,
+                regional_profile=region_profile.to_dict(),
                 risk_score=score,
                 risk_class=decision.risk_class,
                 severity=decision.severity,
                 recommended_action=decision.recommended_action,
-                explanation=_track_explanation(features),
+                explanation=_track_explanation(features, region_profile.to_dict()),
                 model_version=track_model.model_version,
             )
             _publish("track_risk.predicted", response.model_dump(mode="json"))
@@ -124,6 +135,8 @@ def create_app() -> FastAPI:
     def predict_weather_risk(request: WeatherRiskRequest) -> RiskPrediction:
         started = time.perf_counter()
         try:
+            region_profile = get_region_profile(request.segment.region)
+            division = request.segment.division or region_profile.divisions[0]
             track_features = build_track_features(
                 [event.model_dump() for event in request.sensor_events],
                 request.segment.model_dump(),
@@ -133,11 +146,14 @@ def create_app() -> FastAPI:
             decision = classify_score(score, thresholds.weather.caution, thresholds.weather.high_risk)
             response = RiskPrediction(
                 segment_id=request.segment.segment_id,
+                region=region_profile.code,
+                division=division,
+                regional_profile=region_profile.to_dict(),
                 risk_score=score,
                 risk_class=decision.risk_class,
                 severity=decision.severity,
                 recommended_action=decision.recommended_action,
-                explanation=_weather_explanation(features),
+                explanation=_weather_explanation(features, region_profile.to_dict()),
                 model_version=weather_model.model_version,
             )
             _publish("weather_risk.predicted", response.model_dump(mode="json"))
@@ -179,7 +195,10 @@ def create_app() -> FastAPI:
     return app
 
 
-def _track_explanation(features: dict[str, float]) -> list[ExplanationItem]:
+def _track_explanation(
+    features: dict[str, float],
+    region_profile: Optional[dict[str, object]] = None,
+) -> list[ExplanationItem]:
     items: list[ExplanationItem] = []
     if features["speed_max"] > features["max_permitted_speed"]:
         items.append(
@@ -205,11 +224,22 @@ def _track_explanation(features: dict[str, float]) -> list[ExplanationItem]:
                 reason="low maintenance health score",
             )
         )
+    if region_profile:
+        items.append(
+            ExplanationItem(
+                feature="regional_profile",
+                value=str(region_profile["code"]),
+                reason=str(region_profile["operating_condition"]),
+            )
+        )
     return items
 
 
-def _weather_explanation(features: dict[str, float]) -> list[ExplanationItem]:
-    items = _track_explanation(features)
+def _weather_explanation(
+    features: dict[str, float],
+    region_profile: Optional[dict[str, object]] = None,
+) -> list[ExplanationItem]:
+    items = _track_explanation(features, region_profile)
     if features["rainfall_mm"] >= 40:
         items.append(
             ExplanationItem(

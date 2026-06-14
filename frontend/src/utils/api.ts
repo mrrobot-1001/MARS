@@ -2,11 +2,156 @@
 
 const API_BASE_URL = 'http://localhost:8000';
 
+export interface RegionProfile {
+  code: string;
+  name: string;
+  headquarters: string;
+  divisions: string[];
+  terrain: string;
+  operating_condition: string;
+  climate_hazards: string[];
+  speed_factor: number;
+  vibration_factor: number;
+  weather_factor: number;
+  maintenance_factor: number;
+  max_speed_bias: number;
+  rainfall_baseline_mm: number;
+  temperature_baseline_c: number;
+  visibility_baseline_m: number;
+}
+
+export const REGION_PROFILES: RegionProfile[] = [
+  {
+    code: 'NR',
+    name: 'Northern Railway',
+    headquarters: 'New Delhi',
+    divisions: ['Delhi', 'Ambala', 'Firozpur', 'Lucknow', 'Moradabad'],
+    terrain: 'Dense junctions, fog-prone plains, high passenger density',
+    operating_condition: 'Winter fog, congestion, mixed-speed corridors',
+    climate_hazards: ['fog', 'cold_wave', 'heat'],
+    speed_factor: 0.98,
+    vibration_factor: 1.05,
+    weather_factor: 1.12,
+    maintenance_factor: 1.03,
+    max_speed_bias: 0,
+    rainfall_baseline_mm: 18,
+    temperature_baseline_c: 31,
+    visibility_baseline_m: 4200,
+  },
+  {
+    code: 'CR',
+    name: 'Central Railway',
+    headquarters: 'Mumbai CSMT',
+    divisions: ['Mumbai', 'Bhusawal', 'Nagpur', 'Pune', 'Solapur'],
+    terrain: 'Ghat sections, suburban density, heavy freight interfaces',
+    operating_condition: 'Steep gradients, curve wear, monsoon disruption',
+    climate_hazards: ['flood', 'landslide', 'heat'],
+    speed_factor: 0.95,
+    vibration_factor: 1.16,
+    weather_factor: 1.18,
+    maintenance_factor: 1.08,
+    max_speed_bias: -5,
+    rainfall_baseline_mm: 34,
+    temperature_baseline_c: 32,
+    visibility_baseline_m: 5200,
+  },
+  {
+    code: 'WR',
+    name: 'Western Railway',
+    headquarters: 'Mumbai Churchgate',
+    divisions: ['Mumbai Central', 'Vadodara', 'Ahmedabad', 'Ratlam', 'Rajkot', 'Bhavnagar'],
+    terrain: 'Coastal belts, desert approaches, high-speed trunk routes',
+    operating_condition: 'Salinity, heat, dust, long-distance express traffic',
+    climate_hazards: ['heat', 'dust', 'cyclone'],
+    speed_factor: 1.04,
+    vibration_factor: 1.02,
+    weather_factor: 1.07,
+    maintenance_factor: 1.02,
+    max_speed_bias: 10,
+    rainfall_baseline_mm: 22,
+    temperature_baseline_c: 35,
+    visibility_baseline_m: 6800,
+  },
+  {
+    code: 'ER',
+    name: 'Eastern Railway',
+    headquarters: 'Kolkata',
+    divisions: ['Howrah', 'Sealdah', 'Asansol', 'Malda'],
+    terrain: 'Deltaic plains, bridges, dense suburban operations',
+    operating_condition: 'Waterlogging, bridge approaches, crowding',
+    climate_hazards: ['flood', 'fog', 'cyclone'],
+    speed_factor: 0.96,
+    vibration_factor: 1.09,
+    weather_factor: 1.2,
+    maintenance_factor: 1.07,
+    max_speed_bias: -5,
+    rainfall_baseline_mm: 42,
+    temperature_baseline_c: 31,
+    visibility_baseline_m: 4700,
+  },
+  {
+    code: 'SR',
+    name: 'Southern Railway',
+    headquarters: 'Chennai',
+    divisions: ['Chennai', 'Tiruchirappalli', 'Madurai', 'Salem', 'Palakkad', 'Thiruvananthapuram'],
+    terrain: 'Coastal sections, humid climate, hill approaches',
+    operating_condition: 'Humidity, coastal corrosion, monsoon bursts',
+    climate_hazards: ['flood', 'cyclone', 'heat'],
+    speed_factor: 0.98,
+    vibration_factor: 1.04,
+    weather_factor: 1.14,
+    maintenance_factor: 1.05,
+    max_speed_bias: 0,
+    rainfall_baseline_mm: 30,
+    temperature_baseline_c: 33,
+    visibility_baseline_m: 6200,
+  },
+  {
+    code: 'NFR',
+    name: 'Northeast Frontier Railway',
+    headquarters: 'Maligaon',
+    divisions: ['Katihar', 'Alipurduar', 'Rangiya', 'Lumding', 'Tinsukia'],
+    terrain: 'Hills, forests, rivers, landslide-prone formations',
+    operating_condition: 'Washouts, landslides, tight curves, remote maintenance',
+    climate_hazards: ['flood', 'landslide', 'fog'],
+    speed_factor: 0.88,
+    vibration_factor: 1.22,
+    weather_factor: 1.3,
+    maintenance_factor: 1.14,
+    max_speed_bias: -15,
+    rainfall_baseline_mm: 58,
+    temperature_baseline_c: 27,
+    visibility_baseline_m: 3600,
+  },
+  {
+    code: 'NWR',
+    name: 'North Western Railway',
+    headquarters: 'Jaipur',
+    divisions: ['Jaipur', 'Jodhpur', 'Bikaner', 'Ajmer'],
+    terrain: 'Desert, heat, sand ingress, long sparse routes',
+    operating_condition: 'Thermal stress, dust, sparse emergency access',
+    climate_hazards: ['heat', 'dust'],
+    speed_factor: 1.02,
+    vibration_factor: 1.03,
+    weather_factor: 1.08,
+    maintenance_factor: 1.06,
+    max_speed_bias: 5,
+    rainfall_baseline_mm: 8,
+    temperature_baseline_c: 38,
+    visibility_baseline_m: 7200,
+  },
+];
+
+export function getRegionProfile(code: string): RegionProfile {
+  return REGION_PROFILES.find(profile => profile.code === code) || REGION_PROFILES[1];
+}
+
 export interface PredictTrackRequest {
   segment: {
     segment_id: string;
     line_id: string;
     region: string;
+    division?: string;
     asset_type: 'track' | 'bridge' | 'tunnel' | 'platform' | 'yard';
     age_years: number;
     maintenance_score: number;
@@ -63,14 +208,20 @@ export interface PredictSecurityRequest {
 
 export interface PredictionResponse {
   segment_id: string;
+  region?: string;
+  division?: string;
+  regional_profile?: RegionProfile;
   risk_score: number;
   risk_class: number;
   severity: 'normal' | 'caution' | 'high_risk';
   recommended_action: string;
   explanation: Array<{
-    factor: string;
-    score: number;
-    description: string;
+    feature?: string;
+    value?: number | string;
+    reason?: string;
+    factor?: string;
+    score?: number;
+    description?: string;
   }>;
   model_version: string;
 }
@@ -131,11 +282,12 @@ function classifyScore(score: number): { severity: 'normal' | 'caution' | 'high_
 export function simulateTrackRisk(req: PredictTrackRequest): PredictionResponse {
   const seg = req.segment;
   const ev = req.events[0] || { speed: 85, vibration_vertical: 0.25, vibration_lateral: 0.18, track_temperature: 32 };
+  const region = getRegionProfile(seg.region);
   
-  const speedRatio = clamp(ev.speed / Math.max(seg.max_permitted_speed, 1.0));
-  const vibration = clamp(ev.vibration_vertical * 0.55 + ev.vibration_lateral * 0.45);
+  const speedRatio = clamp((ev.speed / Math.max(seg.max_permitted_speed, 1.0)) / region.speed_factor);
+  const vibration = clamp((ev.vibration_vertical * 0.55 + ev.vibration_lateral * 0.45) * region.vibration_factor);
   const age = clamp(seg.age_years / 60.0);
-  const maintenanceRisk = 1.0 - clamp(seg.maintenance_score);
+  const maintenanceRisk = clamp((1.0 - clamp(seg.maintenance_score)) * region.maintenance_factor);
   const heat = clamp((ev.track_temperature - 35.0) / 35.0);
   const curve = clamp(seg.curvature_degree / 8.0);
   
@@ -152,6 +304,9 @@ export function simulateTrackRisk(req: PredictTrackRequest): PredictionResponse 
   
   return {
     segment_id: seg.segment_id,
+    region: region.code,
+    division: seg.division || region.divisions[0],
+    regional_profile: region,
     risk_score: score,
     risk_class: cls.risk_class,
     severity: cls.severity,
@@ -162,7 +317,8 @@ export function simulateTrackRisk(req: PredictTrackRequest): PredictionResponse 
       { factor: 'Segment Age', score: age * 0.15, description: `Segment is ${seg.age_years} years old` },
       { factor: 'Maintenance Status', score: maintenanceRisk * 0.22, description: `Maintenance score is ${seg.maintenance_score}` },
       { factor: 'Track Temperature', score: heat * 0.08, description: `Temperature is ${ev.track_temperature}°C` },
-      { factor: 'Curvature degree', score: curve * 0.07, description: `Curvature is ${seg.curvature_degree}°` }
+      { factor: 'Curvature degree', score: curve * 0.07, description: `Curvature is ${seg.curvature_degree}°` },
+      { factor: `${region.code} regional profile`, score: Math.max(0, region.vibration_factor - 1) * 0.18, description: region.operating_condition }
     ],
     model_version: 'offline-simulator-v1'
   };
@@ -172,11 +328,12 @@ export function simulateWeatherRisk(req: PredictWeatherRequest): PredictionRespo
   const seg = req.segment;
   const ev = req.sensor_events[0] || { speed: 85, vibration_vertical: 0.25, vibration_lateral: 0.18, track_temperature: 32 };
   const w = req.weather;
+  const region = getRegionProfile(seg.region);
   
   const trackResponse = simulateTrackRisk({ segment: seg, events: [ev] });
   const trackBase = trackResponse.risk_score;
   
-  const rainfall = clamp(w.rainfall_mm / 120.0);
+  const rainfall = clamp((w.rainfall_mm / 120.0) * region.weather_factor);
   const lowVis = clamp((1200.0 - w.visibility_m) / 1200.0);
   const wind = clamp(w.wind_speed_kmph / 120.0);
   const heat = clamp((w.temperature_c - 38.0) / 18.0);
@@ -185,7 +342,7 @@ export function simulateWeatherRisk(req: PredictWeatherRequest): PredictionRespo
   if (w.hazard_flags.includes('flood')) flagsCount++;
   if (w.hazard_flags.includes('fog')) flagsCount++;
   if (w.hazard_flags.includes('heat')) flagsCount++;
-  const flags = clamp(flagsCount / 2.0);
+  const flags = clamp((flagsCount / 2.0) * region.weather_factor);
   
   const score = clamp(
     trackBase * 0.42 +
@@ -200,6 +357,9 @@ export function simulateWeatherRisk(req: PredictWeatherRequest): PredictionRespo
   
   return {
     segment_id: seg.segment_id,
+    region: region.code,
+    division: seg.division || region.divisions[0],
+    regional_profile: region,
     risk_score: score,
     risk_class: cls.risk_class,
     severity: cls.severity,

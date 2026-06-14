@@ -1,15 +1,38 @@
 import { useState, useEffect } from 'react';
-import { checkBackendHealth } from '../utils/api';
+import { checkBackendHealth, getRegionProfile, REGION_PROFILES } from '../utils/api';
 
 interface Segment {
   id: string;
   line: string;
   region: string;
+  division: string;
+  condition: string;
   status: 'normal' | 'caution' | 'high_risk';
   vibration: number;
   speed: number;
   temp: number;
   maintenance: number;
+}
+
+function seedSegments(): Segment[] {
+  return REGION_PROFILES.flatMap((profile, zoneIndex) =>
+    profile.divisions.slice(0, 2).map((division, divisionIndex) => {
+      const riskSeed = profile.weather_factor + profile.vibration_factor + divisionIndex * 0.08;
+      const status: Segment['status'] = riskSeed > 2.45 ? 'high_risk' : riskSeed > 2.25 ? 'caution' : 'normal';
+      return {
+        id: `${profile.code}-SEG-${zoneIndex + 1}${divisionIndex + 1}`,
+        line: `${profile.code} ${division} corridor`,
+        region: profile.code,
+        division,
+        condition: profile.operating_condition,
+        status,
+        vibration: Number((0.18 * profile.vibration_factor + divisionIndex * 0.12).toFixed(2)),
+        speed: Math.max(55, 105 + profile.max_speed_bias - divisionIndex * 8),
+        temp: Number((profile.temperature_baseline_c + divisionIndex * 1.7).toFixed(1)),
+        maintenance: Number((0.86 - (profile.maintenance_factor - 1) - divisionIndex * 0.08).toFixed(2)),
+      };
+    })
+  );
 }
 
 interface Alert {
@@ -26,23 +49,14 @@ export default function Dashboard() {
   const [activeSegment, setActiveSegment] = useState<Segment | null>(null);
   
   // Seed segments data
-  const [segments, setSegments] = useState<Segment[]>([
-    { id: 'SEG-001', line: 'Northern Link', region: 'north', status: 'normal', vibration: 0.22, speed: 105, temp: 32.5, maintenance: 0.82 },
-    { id: 'SEG-002', line: 'Northern Link', region: 'north', status: 'caution', vibration: 0.65, speed: 115, temp: 38.0, maintenance: 0.61 },
-    { id: 'SEG-003', line: 'Western Trunk', region: 'west', status: 'normal', vibration: 0.18, speed: 85, temp: 29.2, maintenance: 0.91 },
-    { id: 'SEG-004', line: 'Western Trunk', region: 'west', status: 'high_risk', vibration: 0.95, speed: 135, temp: 44.8, maintenance: 0.35 },
-    { id: 'SEG-005', line: 'Southern Line', region: 'south', status: 'normal', vibration: 0.28, speed: 90, temp: 35.1, maintenance: 0.76 },
-    { id: 'SEG-006', line: 'Southern Line', region: 'south', status: 'normal', vibration: 0.31, speed: 88, temp: 34.0, maintenance: 0.74 },
-    { id: 'SEG-007', line: 'Eastern Express', region: 'east', status: 'caution', vibration: 0.58, speed: 110, temp: 36.5, maintenance: 0.52 },
-    { id: 'SEG-008', line: 'Eastern Express', region: 'east', status: 'normal', vibration: 0.25, speed: 95, temp: 31.0, maintenance: 0.88 },
-  ]);
+  const [segments, setSegments] = useState<Segment[]>(seedSegments());
 
   // Seed alerts
   const [alerts, setAlerts] = useState<Alert[]>([
-    { id: '1', segmentId: 'SEG-004', title: 'Critical Vibration Peak', desc: 'Vibration reached 0.95g, speed exceeds permitted speed limit', severity: 'high_risk', time: '12:24:15' },
-    { id: '2', segmentId: 'SEG-002', title: 'Caution Speed Advisory', desc: 'Slightly high track vibration profile detected', severity: 'caution', time: '12:21:40' },
-    { id: '3', segmentId: 'SEG-007', title: 'Maintenance Overdue Warning', desc: 'Track segment age exceeds 45 years with low maintenance score', severity: 'caution', time: '12:15:10' },
-    { id: '4', segmentId: 'SEG-003', title: 'Standard Maintenance Log', desc: 'Periodic check completed, status stable', severity: 'normal', time: '12:02:00' },
+    { id: '1', segmentId: 'NFR-SEG-61', title: 'Landslide Weather Watch', desc: 'NFR hilly section operating under elevated washout risk', severity: 'high_risk', time: '12:24:15' },
+    { id: '2', segmentId: 'CR-SEG-21', title: 'Ghat Curve Vibration Advisory', desc: 'Central Railway curve wear and vibration profile rising', severity: 'caution', time: '12:21:40' },
+    { id: '3', segmentId: 'ER-SEG-41', title: 'Delta Waterlogging Warning', desc: 'Eastern Railway bridge approach needs patrol inspection', severity: 'caution', time: '12:15:10' },
+    { id: '4', segmentId: 'WR-SEG-31', title: 'Heat Patrol Log', desc: 'Western Railway thermal stress check completed', severity: 'normal', time: '12:02:00' },
   ]);
 
   useEffect(() => {
@@ -59,13 +73,15 @@ export default function Dashboard() {
           const tempChange = parseFloat(((Math.random() - 0.5) * 1.5).toFixed(1));
           
           const newSpeed = Math.max(0, s.speed + speedChange);
-          const newVib = Math.max(0.02, parseFloat((s.vibration + vibChange).toFixed(2)));
-          const newTemp = Math.max(-10, parseFloat((s.temp + tempChange).toFixed(1)));
+          const profile = getRegionProfile(s.region);
+          const newVib = Math.max(0.02, parseFloat((s.vibration + vibChange * profile.vibration_factor).toFixed(2)));
+          const newTemp = Math.max(-10, parseFloat((s.temp + tempChange + (profile.temperature_baseline_c > 35 ? 0.2 : 0)).toFixed(1)));
           
           let status: 'normal' | 'caution' | 'high_risk' = 'normal';
-          if (newVib > 0.8 || newSpeed > 130) {
+          const speedLimit = 120 + profile.max_speed_bias;
+          if (newVib > 0.8 || newSpeed > speedLimit + 18 || s.maintenance < 0.42) {
             status = 'high_risk';
-          } else if (newVib > 0.5 || newSpeed > 110) {
+          } else if (newVib > 0.5 || newSpeed > speedLimit || s.maintenance < 0.58) {
             status = 'caution';
           }
 
@@ -85,7 +101,7 @@ export default function Dashboard() {
                 id: Math.random().toString(),
                 segmentId: s.id,
                 title: status === 'high_risk' ? 'High Risk Status Threshold' : 'Caution Status Warning',
-                desc: `Segment ${s.id} vibration: ${newVib}g, speed: ${newSpeed}km/h`,
+                desc: `${s.region}/${s.division} vibration: ${newVib}g, speed: ${newSpeed}km/h`,
                 severity: status,
                 time: timeStr,
               },
@@ -125,6 +141,15 @@ export default function Dashboard() {
             </span>
           </div>
 
+          <div className="region-strip">
+            {REGION_PROFILES.map(profile => (
+              <div key={profile.code} className="region-chip">
+                <strong>{profile.code}</strong>
+                <span>{segments.filter(segment => segment.region === profile.code).length} segments</span>
+              </div>
+            ))}
+          </div>
+
           <div className="railway-network-map">
             <div className="railway-track-line"></div>
             <div className="railway-segments-wrapper">
@@ -135,7 +160,7 @@ export default function Dashboard() {
                   onClick={() => setActiveSegment(seg)}
                   style={{ transform: activeSegment?.id === seg.id ? 'scale(1.4)' : 'none' }}
                 >
-                  <span className="map-node-tooltip">{seg.id} ({seg.status.toUpperCase()})</span>
+                  <span className="map-node-tooltip">{seg.region}/{seg.division} ({seg.status.toUpperCase()})</span>
                 </div>
               ))}
             </div>
@@ -169,6 +194,11 @@ export default function Dashboard() {
               <h4 className="camera-title" style={{ color: 'var(--color-brand-cyan)' }}>📊 Segment Details: {activeSegment.id}</h4>
               <button className="camera-btn" onClick={() => setActiveSegment(null)}>Close</button>
             </div>
+            <div className="region-profile-panel" style={{ marginBottom: '1rem' }}>
+              <span className="region-profile-title">{activeSegment.region} / {activeSegment.division}</span>
+              <span>{activeSegment.line}</span>
+              <span>{activeSegment.condition}</span>
+            </div>
             <div className="performance-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem' }}>
               <div className="metric-card">
                 <span className="metric-title">Operating Speed</span>
@@ -187,6 +217,7 @@ export default function Dashboard() {
                 <span className={`severity-badge ${activeSegment.status}`} style={{ margin: '0.2rem 0', fontSize: '0.7rem' }}>
                   {activeSegment.status.replace('_', ' ')}
                 </span>
+                <span className="metric-title">Maint. {activeSegment.maintenance}</span>
               </div>
             </div>
           </div>
