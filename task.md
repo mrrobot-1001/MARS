@@ -1,9 +1,9 @@
-- [x] Download predictive maintenance dataset from Hugging Face
-- [x] Update schema to use engine data instead of track/weather
-- [x] Train a new Scikit-Learn GradientBoosting model for Engine Predictive Maintenance
-- [x] Fix the backend FastAPI `app.py` to expose `/engine-risk/predict`
-- [x] Rebuild the frontend UI Dashboard and Risk Evaluator for Locomotive tracking
-- [x] Update `simulate_sensors.py` to stream engine telemetry data
-- [x] Prepare Hugging Face Gradio deployment in `huggingface_space/`
-- [x] Create a Colab Notebook template for engine risk training
-- [x] Push all changes to GitHub `https://github.com/mrrobot-1001/MARS.git`
+- [x] Kill running backend/frontend/simulator tasks
+- [x] Revert git commit `48c3d1e`
+- [x] Run `generate_synthetic.py` to create `track_sensor_dataset.csv`
+- [x] Retrain Track and Weather models on new dataset
+- [x] Create `track_risk_colab_template.md`
+- [x] Rewrite `huggingface_space/app.py` for Track/Weather
+- [x] Start backend and frontend servers
+- [x] Start simulator script
+- [x] Push changes to GitHub

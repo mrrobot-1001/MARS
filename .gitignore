@@ -12,3 +12,6 @@ artifacts/
 *.pt
 *.torchscript
 .env
+.DS_Store
+huggingface_repo/
+
